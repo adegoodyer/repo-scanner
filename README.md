@@ -22,6 +22,17 @@
 - Handles Docker Hub public images
 - Shows last updated dates
 - Identifies available updates
+- Shows all versions between current and latest
+- Includes version sizes
+- Clearly marks current and latest versions
+- Sorts versions using semantic versioning when possible
+- Shows how many versions behind the current version is
+- Includes last updated dates for each version
+- Scanner now handles:
+  - Semantic versioning (e.g., 1.2.3)
+  - Date-based versions (e.g., 20240301)
+  - Alpine/slim variants
+  - Non-semver tags
 
 ## Commands
 ```bash
@@ -35,37 +46,37 @@ repo-scanner --show-summary (-s) flag for summary statistics
 
 # sample output
 Container Image Scan Results:
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 File: ./manifests/deployment.yaml
-----------------------------------------
-Deployment: backend-service
+--------------------------------------------------------------------------------
+Deployment: backend-api
 Container: api
-Image: library/golang:1.19
-Last Updated: 2024-02-20
-Update available! Latest tag: 1.22.1
-----------------------------------------
-Container: sidecar
-Image: library/nginx:1.21
-Last Updated: 2024-03-15
-Update available! Latest tag: 1.25.4
-----------------------------------------
+Image: golang:1.19
 
-File: ./manifests/cronjob.yaml
-----------------------------------------
-CronJob: backup-job
-Container: backup
-Image: library/postgres:13
-Last Updated: 2024-03-01
-Update available! Latest tag: 16.1
-----------------------------------------
+Updates available! Current version is 3 versions behind latest
 
-Scan Summary:
-----------------------------------------
-Total images scanned: 3
-Images needing updates: 3
-Errors encountered: 0
+Version History:
+VERSION              SIZE         STATUS     LAST UPDATED
+----------------------------------------------------------------------
+1.19                 956.8 MB     current   2023-10-15
+1.20                 968.2 MB               2023-12-20
+1.21                 972.1 MB               2024-02-10
+1.22.1               975.5 MB     latest    2024-03-15
+--------------------------------------------------------------------------------
 
-Resources Found:
-Deployment: 1
-CronJob: 1
+File: ./manifests/redis.yaml
+--------------------------------------------------------------------------------
+Deployment: cache
+Container: redis
+Image: redis:6.2
+
+Updates available! Current version is 2 versions behind latest
+
+Version History:
+VERSION              SIZE         STATUS     LAST UPDATED
+----------------------------------------------------------------------
+6.2                  115.2 MB     current   2023-11-01
+7.0                  117.8 MB               2023-12-15
+7.2.4                119.1 MB     latest    2024-03-10
+--------------------------------------------------------------------------------
 ```

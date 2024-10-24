@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -22,13 +24,20 @@ type ImageInfo struct {
 	Name         string
 	Tag          string
 	FilePath     string
-	Resource     string // Kubernetes resource type
-	ResourceName string // Kubernetes resource name
-	Container    string // Container name within the resource
+	Resource     string
+	ResourceName string
+	Container    string
 	LatestTag    string
 	UpdateNeeded bool
 	CheckError   error
 	LastUpdated  string
+	Versions     []VersionInfo
+}
+
+type VersionInfo struct {
+	Tag         string
+	LastUpdated time.Time
+	Size        string
 }
 
 type KubeResource struct {
@@ -277,7 +286,7 @@ func checkImageUpdate(img *ImageInfo) {
 		img.Name = "library/" + img.Name
 	}
 
-	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags", img.Name)
+	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags?page_size=100", img.Name)
 	resp, err := http.Get(url)
 	if err != nil {
 		img.CheckError = err
@@ -294,6 +303,7 @@ func checkImageUpdate(img *ImageInfo) {
 		Results []struct {
 			Name        string    `json:"name"`
 			LastUpdated time.Time `json:"last_updated"`
+			FullSize    int64     `json:"full_size"`
 		} `json:"results"`
 	}
 
@@ -302,26 +312,114 @@ func checkImageUpdate(img *ImageInfo) {
 		return
 	}
 
-	for _, tag := range result.Results {
-		if tag.Name == "latest" {
-			img.LastUpdated = tag.LastUpdated.Format("2006-01-02")
-			if img.Tag == "latest" {
-				img.UpdateNeeded = true
-			}
-			break
+	// Filter and sort versions
+	versions := filterAndSortVersions(result.Results, img.Tag)
+	if len(versions) == 0 {
+		img.CheckError = fmt.Errorf("no compatible versions found")
+		return
+	}
+
+	img.Versions = versions
+	img.LatestTag = versions[len(versions)-1].Tag
+	img.LastUpdated = versions[len(versions)-1].LastUpdated.Format("2006-01-02")
+	img.UpdateNeeded = img.Tag != img.LatestTag
+}
+
+func filterAndSortVersions(results []struct {
+	Name        string    `json:"name"`
+	LastUpdated time.Time `json:"last_updated"`
+	FullSize    int64     `json:"full_size"`
+}, currentTag string) []VersionInfo {
+	var versions []VersionInfo
+	seenVersions := make(map[string]bool)
+
+	// Try to parse current tag as semver
+	currentVer, currentIsSemver := tryParseSemver(currentTag)
+
+	for _, result := range results {
+		// Skip duplicates
+		if seenVersions[result.Name] {
+			continue
 		}
-		if tag.Name == img.Tag {
-			img.LastUpdated = tag.LastUpdated.Format("2006-01-02")
-			break
+		seenVersions[result.Name] = true
+
+		// Convert size to human-readable format
+		size := humanizeSize(result.FullSize)
+
+		// If current tag is semver, only include compatible versions
+		if currentIsSemver {
+			if ver, ok := tryParseSemver(result.Name); ok {
+				if ver.Compare(currentVer) >= 0 {
+					versions = append(versions, VersionInfo{
+						Tag:         result.Name,
+						LastUpdated: result.LastUpdated,
+						Size:        size,
+					})
+				}
+			}
+		} else {
+			// If not semver, include all versions
+			versions = append(versions, VersionInfo{
+				Tag:         result.Name,
+				LastUpdated: result.LastUpdated,
+				Size:        size,
+			})
 		}
 	}
 
-	if len(result.Results) > 0 {
-		img.LatestTag = result.Results[0].Name
-		if img.Tag != img.LatestTag {
-			img.UpdateNeeded = true
+	// Sort versions
+	sort.Slice(versions, func(i, j int) bool {
+		verI, okI := tryParseSemver(versions[i].Tag)
+		verJ, okJ := tryParseSemver(versions[j].Tag)
+
+		// If both are semver, compare them
+		if okI && okJ {
+			return verI.LessThan(verJ)
 		}
+
+		// If only one is semver, put non-semver last
+		if okI != okJ {
+			return okI
+		}
+
+		// If neither is semver, sort by last updated
+		return versions[i].LastUpdated.Before(versions[j].LastUpdated)
+	})
+
+	return versions
+}
+
+func tryParseSemver(version string) (*semver.Version, bool) {
+	// Remove common prefixes
+	version = strings.TrimPrefix(version, "v")
+
+	// Try parsing as is
+	if v, err := semver.NewVersion(version); err == nil {
+		return v, true
 	}
+
+	// Try parsing with common suffixes removed
+	cleanVersion := regexp.MustCompile(`-(alpine|slim|debian|ubuntu|bullseye|buster).*$`).
+		ReplaceAllString(version, "")
+
+	if v, err := semver.NewVersion(cleanVersion); err == nil {
+		return v, true
+	}
+
+	return nil, false
+}
+
+func humanizeSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 func printResults(images []ImageInfo, showSummary bool) {
@@ -329,20 +427,19 @@ func printResults(images []ImageInfo, showSummary bool) {
 	green := color.New(color.FgGreen)
 	yellow := color.New(color.FgYellow)
 	red := color.New(color.FgRed)
+	cyan := color.New(color.FgCyan)
 
 	bold.Println("\nContainer Image Scan Results:")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Println(strings.Repeat("-", 100))
 
-	// Group images by file
 	imagesByFile := make(map[string][]ImageInfo)
 	for _, img := range images {
 		imagesByFile[img.FilePath] = append(imagesByFile[img.FilePath], img)
 	}
 
-	// Print results grouped by file
 	for filePath, fileImages := range imagesByFile {
 		bold.Printf("File: %s\n", filePath)
-		fmt.Println(strings.Repeat("-", 40))
+		fmt.Println(strings.Repeat("-", 80))
 
 		for _, img := range fileImages {
 			if img.Resource != "Dockerfile" {
@@ -350,19 +447,40 @@ func printResults(images []ImageInfo, showSummary bool) {
 				fmt.Printf("Container: %s\n", img.Container)
 			}
 
-			fmt.Printf("Image: %s:%s\n", img.Name, img.Tag)
+			bold.Printf("Image: %s:%s\n", img.Name, img.Tag)
 
 			if img.CheckError != nil {
 				red.Printf("Error checking updates: %v\n", img.CheckError)
 			} else {
-				fmt.Printf("Last Updated: %s\n", img.LastUpdated)
 				if img.UpdateNeeded {
-					yellow.Printf("Update available! Latest tag: %s\n", img.LatestTag)
+					yellow.Printf("Updates available! Current version is %d versions behind latest\n",
+						len(img.Versions)-1)
 				} else {
 					green.Println("Up to date")
 				}
+
+				// Print version history
+				cyan.Println("\nVersion History:")
+				fmt.Printf("%-20s %-12s %-10s %s\n", "VERSION", "SIZE", "STATUS", "LAST UPDATED")
+				fmt.Println(strings.Repeat("-", 70))
+
+				for _, version := range img.Versions {
+					status := " "
+					if version.Tag == img.Tag {
+						status = "current"
+					} else if version.Tag == img.LatestTag {
+						status = "latest"
+					}
+
+					fmt.Printf("%-20s %-12s %-10s %s\n",
+						version.Tag,
+						version.Size,
+						status,
+						version.LastUpdated.Format("2006-01-02"),
+					)
+				}
 			}
-			fmt.Println(strings.Repeat("-", 40))
+			fmt.Println(strings.Repeat("-", 80))
 		}
 		fmt.Println()
 	}
