@@ -17,7 +17,7 @@
 ## Commands
 ```bash
 # installation
-go get install github.com/adegoodyer/repo-scanner@latest
+go install github.com/adegoodyer/repo-scanner/cmd/repo-scanner@latest
 
 # usage
 repo-scanner
