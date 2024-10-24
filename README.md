@@ -43,6 +43,7 @@ go install github.com/adegoodyer/repo-scanner/cmd/repo-scanner@latest
 ```bash
 # usage
 repo-scanner
+repo-scanner -ks
 repo-scanner --kubernetes-only (-k) flag to only scan Kubernetes manifests
 repo-scanner --show-summary (-s) flag for summary statistics
 ```
