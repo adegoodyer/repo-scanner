@@ -1,7 +1,7 @@
 # repo-scanner
 
 ## Overview
-- Recursively scans directory for Dockerfiles and YAML files
+- Recursively scans directory for Dockerfiles, YAML files and Kubernetes manifests
 - Extracts container image references using regex
 - Checks Docker Hub for updates for each image
 - Presents results in formatted and coloured   output
@@ -34,17 +34,21 @@
   - Alpine/slim variants
   - Non-semver tags
 
-## Commands
+## Installation
 ```bash
-# installation
 go install github.com/adegoodyer/repo-scanner/cmd/repo-scanner@latest
+```
 
+## Usage
+```bash
 # usage
 repo-scanner
 repo-scanner --kubernetes-only (-k) flag to only scan Kubernetes manifests
 repo-scanner --show-summary (-s) flag for summary statistics
+```
 
-# sample output
+## Sample Output
+```bash
 Container Image Scan Results:
 ----------------------------------------------------------------------------------------------------
 File: ./manifests/deployment.yaml
@@ -80,3 +84,6 @@ VERSION              SIZE         STATUS     LAST UPDATED
 7.2.4                119.1 MB     latest    2024-03-10
 --------------------------------------------------------------------------------
 ```
+
+## Screenshot
+<img src="img/screenshot-24102024.png" alt="screenshot-24102024" width="800">
