@@ -1,7 +1,7 @@
 # repo-scanner
 
 ## Overview
-  - Recursively scans directory for Dockerfiles and YAML files
+- Recursively scans directory for Dockerfiles and YAML files
 - Extracts container image references using regex
 - Checks Docker Hub for updates for each image
 - Presents results in formatted and coloured   output
@@ -9,6 +9,15 @@
 ## Key Features
 - Concurrent update checking with rate limiting
 - Supports both Dockerfile and YAML/YML files
+- Comprehensive Kubernetes support:
+  - Deployments, StatefulSets, DaemonSets
+  - CronJobs and Jobs
+  - Pods and ReplicaSets
+  - Init containers support
+  - Multiple containers per pod
+- Grouped output by file for better readability
+- Resource type and name display
+- Container name display
 - Color-coded output for better visibility
 - Handles Docker Hub public images
 - Shows last updated dates
@@ -21,28 +30,42 @@ go install github.com/adegoodyer/repo-scanner/cmd/repo-scanner@latest
 
 # usage
 repo-scanner
+repo-scanner --kubernetes-only (-k) flag to only scan Kubernetes manifests
+repo-scanner --show-summary (-s) flag for summary statistics
 
 # sample output
 Container Image Scan Results:
 --------------------------------------------------------------------------------
-Image: library/node:16.13.0-alpine
-File: ./sample-repo/Dockerfile
-Last Updated: 2023-11-15
-Update available! Latest tag: 21.6.0-alpine
---------------------------------------------------------------------------------
+File: ./manifests/deployment.yaml
+----------------------------------------
+Deployment: backend-service
+Container: api
 Image: library/golang:1.19
-File: ./sample-repo/backend/Dockerfile
 Last Updated: 2024-02-20
 Update available! Latest tag: 1.22.1
---------------------------------------------------------------------------------
-Image: library/redis:6.2
-File: ./sample-repo/k8s/deployment.yaml
-Last Updated: 2024-03-10
-Update available! Latest tag: 7.2.4
---------------------------------------------------------------------------------
+----------------------------------------
+Container: sidecar
 Image: library/nginx:1.21
-File: ./sample-repo/k8s/deployment.yaml
 Last Updated: 2024-03-15
 Update available! Latest tag: 1.25.4
---------------------------------------------------------------------------------
+----------------------------------------
+
+File: ./manifests/cronjob.yaml
+----------------------------------------
+CronJob: backup-job
+Container: backup
+Image: library/postgres:13
+Last Updated: 2024-03-01
+Update available! Latest tag: 16.1
+----------------------------------------
+
+Scan Summary:
+----------------------------------------
+Total images scanned: 3
+Images needing updates: 3
+Errors encountered: 0
+
+Resources Found:
+Deployment: 1
+CronJob: 1
 ```
